@@ -16,25 +16,44 @@ if ($conn->connect_error) {
 $playerUsername = $_POST["username"];
 $playerPassword = $_POST["password"];
 
+error_log("Jugador buscado: " . $playerUsername);
+
 // Verificar si el usuario existe y obtener su Game_Name
-$sql = "SELECT Password, Game_Name FROM Player WHERE Username = ?";
+$sql = "SELECT p.Username,
+               p.GameTag,
+               p.Password,
+               s.gamesPlayed,
+               s.wins,
+               s.platesDelivered 
+        FROM Player p
+        INNER JOIN player_stats s
+        ON p.Username = s.Username
+        WHERE p.Username = ?";
 $stmt = $conn->prepare($sql);
+
+if (!$stmt) {
+    error_log("Error en la preparación de la consulta: " . $conn->error);
+    echo json_encode(["error" => "Error interno del servidor"]);
+    exit;
+}
+
 $stmt->bind_param("s", $playerUsername);
 $stmt->execute();
-$stmt->store_result();
+$result = $stmt->get_result();
 
-if ($stmt->num_rows > 0) {
-    $stmt->bind_result($hashedPassword, $gameName);
-    $stmt->fetch();
+if ($result->num_rows > 0) {
+    $data = $result->fetch_assoc();
 
-    // Verificar la contraseña
-    if (password_verify($playerPassword, $hashedPassword)) {
-        echo "success:$gameName";  // Respuesta concatenada con ":" para separar el estado y el nombre del juego
+    // Verificar si la contraseña enviada coincide con la almacenada en la base de datos
+    if (password_verify($playerPassword, $data['Password'])) {
+        unset($data['Password']); // Eliminar la contraseña antes de enviarla
+        echo json_encode($data);
     } else {
-        echo "error:Contraseña incorrecta";
+        echo json_encode(["error" => "Contraseña incorrecta"]);
     }
 } else {
-    echo "error:Usuario no encontrado";
+    error_log("Jugador no encontrado: " . $playerUsername);
+    echo json_encode(["error" => "Jugador no encontrado"]);
 }
 
 $stmt->close();
